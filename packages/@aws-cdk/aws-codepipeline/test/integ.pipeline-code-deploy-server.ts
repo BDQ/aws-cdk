@@ -5,7 +5,7 @@ import codepipeline = require('../lib');
 
 const app = new cdk.App();
 
-const stack = new cdk.Stack(app, 'aws-cdk-codepipeline-codedeploy');
+const stack = new cdk.Stack(app, 'aws-cdk-codepipeline-codedeploy-server');
 
 const application = new codedeploy.ServerApplication(stack, 'CodeDeployApplication', {
   applicationName: 'IntegTestDeployApp',

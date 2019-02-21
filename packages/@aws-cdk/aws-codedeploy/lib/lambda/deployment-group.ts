@@ -3,36 +3,16 @@ import iam = require('@aws-cdk/aws-iam');
 import lambda = require('@aws-cdk/aws-lambda');
 import cdk = require('@aws-cdk/cdk');
 
+import { IApplication } from '../base/application';
+import { IDeploymentConfig } from '../base/deployment-config';
+import { IDeploymentGroup } from '../base/deployment-group';
+import { CommonPipelineDeployActionProps } from '../base/pipeline-action';
 import { CfnDeploymentGroup } from '../codedeploy.generated';
 import { AutoRollbackConfig } from '../rollback-config';
 import { deploymentGroupNameToArn, renderAlarmConfiguration, renderAutoRollbackConfiguration } from '../utils';
-import { ILambdaApplication, LambdaApplication } from './application';
-import { ILambdaDeploymentConfig, LambdaDeploymentConfig } from './deployment-config';
-
-/**
- * Interface for a Lambda deployment groups.
- */
-export interface ILambdaDeploymentGroup extends cdk.IConstruct {
-  /**
-   * The reference to the CodeDeploy Lambda Application that this Deployment Group belongs to.
-   */
-  readonly application: ILambdaApplication;
-
-  /**
-   * The physical name of the CodeDeploy Deployment Group.
-   */
-  readonly deploymentGroupName: string;
-
-  /**
-   * The ARN of this Deployment Group.
-   */
-  readonly deploymentGroupArn: string;
-
-  /**
-   * Export this Deployment Group for use in another stack or application.
-   */
-  export(): LambdaDeploymentGroupImportProps;
-}
+import { LambdaApplication } from './application';
+import { LambdaDeploymentConfig } from './deployment-config';
+import { LambdaPipelineDeployAction } from './pipeline-action';
 
 /**
  * Construction properties for {@link LambdaDeploymentGroup}.
@@ -57,7 +37,7 @@ export interface LambdaDeploymentGroupProps {
    *
    * @default LambdaDeploymentConfig#AllAtOnce
    */
-  deploymentConfig?: ILambdaDeploymentConfig;
+  deploymentConfig?: IDeploymentConfig;
 
   /**
    * The CloudWatch alarms associated with this Deployment Group.
@@ -107,7 +87,7 @@ export interface LambdaDeploymentGroupProps {
   autoRollback?: AutoRollbackConfig;
 }
 
-export class LambdaDeploymentGroup extends cdk.Construct implements ILambdaDeploymentGroup {
+export class LambdaDeploymentGroup extends cdk.Construct implements IDeploymentGroup {
   /**
    * Import an Lambda Deployment Group defined either outside the CDK,
    * or in a different CDK Stack and exported using the {@link #export} method.
@@ -117,11 +97,11 @@ export class LambdaDeploymentGroup extends cdk.Construct implements ILambdaDeplo
    * @param props the properties of the referenced Deployment Group
    * @returns a Construct representing a reference to an existing Deployment Group
    */
-  public static import(scope: cdk.Construct, id: string, props: LambdaDeploymentGroupImportProps): ILambdaDeploymentGroup {
+  public static import(scope: cdk.Construct, id: string, props: LambdaDeploymentGroupImportProps): IDeploymentGroup {
     return new ImportedLambdaDeploymentGroup(scope, id, props);
   }
 
-  public readonly application: ILambdaApplication;
+  public readonly application: IApplication;
   public readonly deploymentGroupName: string;
   public readonly deploymentGroupArn: string;
   public readonly role: iam.Role;
@@ -221,6 +201,14 @@ export class LambdaDeploymentGroup extends cdk.Construct implements ILambdaDeplo
     this.postHook.grantInvoke(this.role);
   }
 
+  public toCodePipelineDeployAction(props: CommonPipelineDeployActionProps):
+    LambdaPipelineDeployAction {
+    return new LambdaPipelineDeployAction({
+      ...props,
+      deploymentGroup: this,
+    });
+  }
+
   /**
    * Grant a principal permission to codedeploy:PutLifecycleEventHookExecutionStatus
    * on this deployment group resource.
@@ -255,17 +243,24 @@ export interface LambdaDeploymentGroupImportProps {
    * The reference to the CodeDeploy Lambda Application
    * that this Deployment Group belongs to.
    */
-  application: ILambdaApplication;
+  application: IApplication;
 
   /**
    * The physical, human-readable name of the CodeDeploy Lambda Deployment Group
    * that we are referencing.
    */
   deploymentGroupName: string;
+
+  /**
+   * The Deployment Configuration this Deployment Group uses.
+   *
+   * @default LambdaDeploymentConfig#AllAtOnce
+   */
+  deploymentConfig?: IDeploymentConfig;
 }
 
-class ImportedLambdaDeploymentGroup extends cdk.Construct implements ILambdaDeploymentGroup {
-  public readonly application: ILambdaApplication;
+class ImportedLambdaDeploymentGroup extends cdk.Construct implements IDeploymentGroup {
+  public readonly application: IApplication;
   public readonly deploymentGroupName: string;
   public readonly deploymentGroupArn: string;
 

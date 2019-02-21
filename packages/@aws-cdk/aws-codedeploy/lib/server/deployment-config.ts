@@ -1,38 +1,12 @@
 import cdk = require('@aws-cdk/cdk');
+import { DeploymentConfigImportProps, IDeploymentConfig } from '../base/deployment-config';
 import { CfnDeploymentConfig } from '../codedeploy.generated';
 import { arnForDeploymentConfigName } from '../utils';
 
-/**
- * The Deployment Configuration of an EC2/on-premise Deployment Group.
- * The default, pre-defined Configurations are available as constants on the {@link ServerDeploymentConfig} class
- * (`ServerDeploymentConfig.HalfAtATime`, `ServerDeploymentConfig.AllAtOnce`, etc.).
- * To create a custom Deployment Configuration,
- * instantiate the {@link ServerDeploymentConfig} Construct.
- */
-export interface IServerDeploymentConfig {
-  readonly deploymentConfigName: string;
-  deploymentConfigArn(scope: cdk.IConstruct): string;
-  export(): ServerDeploymentConfigImportProps;
-}
-
-/**
- * Properties of a reference to a CodeDeploy EC2/on-premise Deployment Configuration.
- *
- * @see ServerDeploymentConfig#import
- * @see ServerDeploymentConfig#export
- */
-export interface ServerDeploymentConfigImportProps {
-  /**
-   * The physical, human-readable name of the custom CodeDeploy EC2/on-premise Deployment Configuration
-   * that we are referencing.
-   */
-  deploymentConfigName: string;
-}
-
-class ImportedServerDeploymentConfig extends cdk.Construct implements IServerDeploymentConfig {
+class ImportedServerDeploymentConfig extends cdk.Construct implements IDeploymentConfig {
   public readonly deploymentConfigName: string;
 
-  constructor(scope: cdk.Construct, id: string, private readonly props: ServerDeploymentConfigImportProps) {
+  constructor(scope: cdk.Construct, id: string, private readonly props: DeploymentConfigImportProps) {
     super(scope, id);
 
     this.deploymentConfigName = props.deploymentConfigName;
@@ -47,7 +21,7 @@ class ImportedServerDeploymentConfig extends cdk.Construct implements IServerDep
   }
 }
 
-class DefaultServerDeploymentConfig implements IServerDeploymentConfig {
+class DefaultServerDeploymentConfig implements IDeploymentConfig {
   public readonly deploymentConfigName: string;
 
   constructor(deploymentConfigName: string) {
@@ -58,7 +32,7 @@ class DefaultServerDeploymentConfig implements IServerDeploymentConfig {
     return arnForDeploymentConfigName(this.deploymentConfigName, scope);
   }
 
-  public export(): ServerDeploymentConfigImportProps {
+  public export(): DeploymentConfigImportProps {
     return {
       deploymentConfigName: this.deploymentConfigName
     };
@@ -96,10 +70,10 @@ export interface ServerDeploymentConfigProps {
 /**
  * A custom Deployment Configuration for an EC2/on-premise Deployment Group.
  */
-export class ServerDeploymentConfig extends cdk.Construct implements IServerDeploymentConfig {
-  public static readonly OneAtATime: IServerDeploymentConfig = new DefaultServerDeploymentConfig('CodeDeployDefault.OneAtATime');
-  public static readonly HalfAtATime: IServerDeploymentConfig = new DefaultServerDeploymentConfig('CodeDeployDefault.HalfAtATime');
-  public static readonly AllAtOnce: IServerDeploymentConfig = new DefaultServerDeploymentConfig('CodeDeployDefault.AllAtOnce');
+export class ServerDeploymentConfig extends cdk.Construct implements IDeploymentConfig {
+  public static readonly OneAtATime: IDeploymentConfig = new DefaultServerDeploymentConfig('CodeDeployDefault.OneAtATime');
+  public static readonly HalfAtATime: IDeploymentConfig = new DefaultServerDeploymentConfig('CodeDeployDefault.HalfAtATime');
+  public static readonly AllAtOnce: IDeploymentConfig = new DefaultServerDeploymentConfig('CodeDeployDefault.AllAtOnce');
 
   /**
    * Import a custom Deployment Configuration for an EC2/on-premise Deployment Group defined either outside the CDK,
@@ -110,7 +84,7 @@ export class ServerDeploymentConfig extends cdk.Construct implements IServerDepl
    * @param props the properties of the referenced custom Deployment Configuration
    * @returns a Construct representing a reference to an existing custom Deployment Configuration
    */
-  public static import(scope: cdk.Construct, id: string, props: ServerDeploymentConfigImportProps): IServerDeploymentConfig {
+  public static import(scope: cdk.Construct, id: string, props: DeploymentConfigImportProps): IDeploymentConfig {
     return new ImportedServerDeploymentConfig(scope, id, props);
   }
 
@@ -131,7 +105,7 @@ export class ServerDeploymentConfig extends cdk.Construct implements IServerDepl
     return arnForDeploymentConfigName(this.deploymentConfigName, scope);
   }
 
-  public export(): ServerDeploymentConfigImportProps {
+  public export(): DeploymentConfigImportProps {
     return {
       deploymentConfigName: new cdk.Output(this, 'DeploymentConfigName', {
         value: this.deploymentConfigName,
@@ -140,7 +114,7 @@ export class ServerDeploymentConfig extends cdk.Construct implements IServerDepl
   }
 
   private minimumHealthyHosts(props: ServerDeploymentConfigProps):
-      CfnDeploymentConfig.MinimumHealthyHostsProperty {
+    CfnDeploymentConfig.MinimumHealthyHostsProperty {
     if (props.minHealthyHostCount === undefined && props.minHealthyHostPercentage === undefined) {
       throw new Error('At least one of minHealthyHostCount or minHealthyHostPercentage must be specified when creating ' +
         'a custom Server DeploymentConfig');
@@ -152,7 +126,7 @@ export class ServerDeploymentConfig extends cdk.Construct implements IServerDepl
 
     return {
       type: props.minHealthyHostCount !== undefined ? 'HOST_COUNT' : 'FLEET_PERCENT',
-      value: props.minHealthyHostCount !== undefined  ? props.minHealthyHostCount : props.minHealthyHostPercentage!,
+      value: props.minHealthyHostCount !== undefined ? props.minHealthyHostCount : props.minHealthyHostPercentage!,
     };
   }
 }

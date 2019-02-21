@@ -1,7 +1,8 @@
+
 import codepipeline = require('@aws-cdk/aws-codepipeline-api');
 import iam = require('@aws-cdk/aws-iam');
 import cdk = require('@aws-cdk/cdk');
-import { IServerDeploymentGroup } from './server';
+import { IDeploymentGroup } from './deployment-group';
 
 /**
  * Common properties for creating a {@link PipelineDeployAction},
@@ -16,60 +17,44 @@ export interface CommonPipelineDeployActionProps extends codepipeline.CommonActi
 }
 
 /**
- * Construction properties of the {@link PipelineDeployAction CodeDeploy deploy CodePipeline Action}.
+ * Common construction properties of the {@link BasePipelineDeployAction CodeDeploy deploy CodePipeline Action}.
  */
 export interface PipelineDeployActionProps extends CommonPipelineDeployActionProps {
-  /**
-   * The CodeDeploy Deployment Group to deploy to.
-   */
-  deploymentGroup: IServerDeploymentGroup;
+  configuration: any;
 }
 
-export class PipelineDeployAction extends codepipeline.DeployAction {
-  private readonly deploymentGroup: IServerDeploymentGroup;
+export abstract class BasePipelineDeployAction extends codepipeline.DeployAction {
 
   constructor(props: PipelineDeployActionProps) {
     super({
       ...props,
       artifactBounds: { minInputs: 1, maxInputs: 1, minOutputs: 0, maxOutputs: 0 },
       provider: 'CodeDeploy',
-      inputArtifact: props.inputArtifact,
-      configuration: {
-        ApplicationName: props.deploymentGroup.application.applicationName,
-        DeploymentGroupName: props.deploymentGroup.deploymentGroupName,
-      },
+      inputArtifact: props.inputArtifact
     });
 
-    this.deploymentGroup = props.deploymentGroup;
   }
 
-  protected bind(stage: codepipeline.IStage, scope: cdk.Construct): void {
-    // permissions, based on:
-    // https://docs.aws.amazon.com/codedeploy/latest/userguide/auth-and-access-control-permissions-reference.html
-
+  protected addCommonPermissions(stage: codepipeline.IStage, scope: cdk.Construct, deploymentGroup: IDeploymentGroup): void {
     stage.pipeline.role.addToPolicy(new iam.PolicyStatement()
-      .addResource(this.deploymentGroup.application.applicationArn)
+      .addResource(deploymentGroup.application.applicationArn)
       .addActions(
         'codedeploy:GetApplicationRevision',
         'codedeploy:RegisterApplicationRevision',
       ));
 
     stage.pipeline.role.addToPolicy(new iam.PolicyStatement()
-      .addResource(this.deploymentGroup.deploymentGroupArn)
+      .addResource(deploymentGroup.deploymentGroupArn)
       .addActions(
         'codedeploy:CreateDeployment',
         'codedeploy:GetDeployment',
       ));
 
     stage.pipeline.role.addToPolicy(new iam.PolicyStatement()
-      .addResource(this.deploymentGroup.deploymentConfig.deploymentConfigArn(scope))
+      .addResource(deploymentGroup.deploymentConfig.deploymentConfigArn(scope))
       .addActions(
         'codedeploy:GetDeploymentConfig',
       ));
-
-    // grant the ASG Role permissions to read from the Pipeline Bucket
-    for (const asg of this.deploymentGroup.autoScalingGroups || []) {
-      stage.pipeline.grantBucketRead(asg.role);
-    }
   }
+
 }

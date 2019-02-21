@@ -5,29 +5,33 @@ import ec2 = require('@aws-cdk/aws-ec2');
 import iam = require('@aws-cdk/aws-iam');
 import s3 = require('@aws-cdk/aws-s3');
 import cdk = require('@aws-cdk/cdk');
+import { IApplication } from '../base/application';
+import { IDeploymentConfig } from '../base/deployment-config';
+import { IDeploymentGroup } from '../base/deployment-group';
+import { CommonPipelineDeployActionProps } from '../base/pipeline-action';
 import { CfnDeploymentGroup } from '../codedeploy.generated';
-import { CommonPipelineDeployActionProps, PipelineDeployAction } from '../pipeline-action';
 import { AutoRollbackConfig } from '../rollback-config';
 import { deploymentGroupNameToArn, renderAlarmConfiguration, renderAutoRollbackConfiguration } from '../utils';
-import { IServerApplication, ServerApplication } from './application';
-import { IServerDeploymentConfig, ServerDeploymentConfig } from './deployment-config';
+import { ServerApplication } from './application';
+import { ServerDeploymentConfig } from './deployment-config';
+import { ServerPipelineDeployAction } from './pipeline-action';
 
-export interface IServerDeploymentGroup extends cdk.IConstruct {
-  readonly application: IServerApplication;
+export interface IServerDeploymentGroup extends IDeploymentGroup {
   readonly role?: iam.Role;
-  readonly deploymentGroupName: string;
-  readonly deploymentGroupArn: string;
-  readonly deploymentConfig: IServerDeploymentConfig;
+
   readonly autoScalingGroups?: autoscaling.AutoScalingGroup[];
+  /**
+   * Export this Deployment Group for use in another stack or application.
+   */
   export(): ServerDeploymentGroupImportProps;
 
   /**
-   * Convenience method for creating a new {@link PipelineDeployAction}.
+   * Convenience method for creating a new {@link ServerPipelineDeployAction}.
    *
    * @param props the construction properties of the new Action
    * @returns the newly created {@link PipelineDeployAction}
    */
-  toCodePipelineDeployAction(props: CommonPipelineDeployActionProps): PipelineDeployAction;
+  toCodePipelineDeployAction(props: CommonPipelineDeployActionProps): ServerPipelineDeployAction;
 }
 
 /**
@@ -41,7 +45,7 @@ export interface ServerDeploymentGroupImportProps {
    * The reference to the CodeDeploy EC2/on-premise Application
    * that this Deployment Group belongs to.
    */
-  application: IServerApplication;
+  application: IApplication;
 
   /**
    * The physical, human-readable name of the CodeDeploy EC2/on-premise Deployment Group
@@ -54,7 +58,7 @@ export interface ServerDeploymentGroupImportProps {
    *
    * @default ServerDeploymentConfig#OneAtATime
    */
-  deploymentConfig?: IServerDeploymentConfig;
+  deploymentConfig?: IDeploymentConfig;
 }
 
 /**
@@ -68,14 +72,14 @@ export interface ServerDeploymentGroupImportProps {
  * use the {@link #import} method.
  */
 export abstract class ServerDeploymentGroupBase extends cdk.Construct implements IServerDeploymentGroup {
-  public abstract readonly application: IServerApplication;
+  public abstract readonly application: IApplication;
   public abstract readonly role?: iam.Role;
   public abstract readonly deploymentGroupName: string;
   public abstract readonly deploymentGroupArn: string;
-  public readonly deploymentConfig: IServerDeploymentConfig;
+  public readonly deploymentConfig: IDeploymentConfig;
   public abstract readonly autoScalingGroups?: autoscaling.AutoScalingGroup[];
 
-  constructor(scope: cdk.Construct, id: string, deploymentConfig?: IServerDeploymentConfig) {
+  constructor(scope: cdk.Construct, id: string, deploymentConfig?: IDeploymentConfig) {
     super(scope, id);
     this.deploymentConfig = deploymentConfig || ServerDeploymentConfig.OneAtATime;
   }
@@ -83,8 +87,8 @@ export abstract class ServerDeploymentGroupBase extends cdk.Construct implements
   public abstract export(): ServerDeploymentGroupImportProps;
 
   public toCodePipelineDeployAction(props: CommonPipelineDeployActionProps):
-      PipelineDeployAction {
-    return new PipelineDeployAction({
+    ServerPipelineDeployAction {
+    return new ServerPipelineDeployAction({
       ...props,
       deploymentGroup: this,
     });
@@ -92,7 +96,7 @@ export abstract class ServerDeploymentGroupBase extends cdk.Construct implements
 }
 
 class ImportedServerDeploymentGroup extends ServerDeploymentGroupBase {
-  public readonly application: IServerApplication;
+  public readonly application: IApplication;
   public readonly role?: iam.Role = undefined;
   public readonly deploymentGroupName: string;
   public readonly deploymentGroupArn: string;
@@ -123,7 +127,7 @@ class ImportedServerDeploymentGroup extends ServerDeploymentGroupBase {
  * If the key is an empty string, any tag,
  * regardless of its key, with any of the given values, will match.
  */
-export type InstanceTagGroup = {[key: string]: string[]};
+export type InstanceTagGroup = { [key: string]: string[] };
 
 /**
  * Represents a set of instance tag groups.
@@ -155,7 +159,7 @@ export interface ServerDeploymentGroupProps {
    * The CodeDeploy EC2/on-premise Application this Deployment Group belongs to.
    * If you don't provide one, a new Application will be created.
    */
-  application?: IServerApplication;
+  application?: IApplication;
 
   /**
    * The service Role of this Deployment Group.
@@ -175,7 +179,7 @@ export interface ServerDeploymentGroupProps {
    *
    * @default ServerDeploymentConfig#OneAtATime
    */
-  deploymentConfig?: IServerDeploymentConfig;
+  deploymentConfig?: IDeploymentConfig;
 
   /**
    * The auto-scaling groups belonging to this Deployment Group.
@@ -260,7 +264,7 @@ export class ServerDeploymentGroup extends ServerDeploymentGroupBase {
     return new ImportedServerDeploymentGroup(scope, id, props);
   }
 
-  public readonly application: IServerApplication;
+  public readonly application: IApplication;
   public readonly role?: iam.Role;
   public readonly deploymentGroupArn: string;
   public readonly deploymentGroupName: string;
@@ -363,14 +367,14 @@ export class ServerDeploymentGroup extends ServerDeploymentGroupBase {
         asg.addUserData(
           'PKG_CMD=`which yum 2>/dev/null`',
           'if [ -z "$PKG_CMD" ]; then',
-            'PKG_CMD=apt-get',
+          'PKG_CMD=apt-get',
           'else',
-            'PKG=CMD=yum',
+          'PKG=CMD=yum',
           'fi',
           '$PKG_CMD update -y',
           '$PKG_CMD install -y ruby2.0',
           'if [ $? -ne 0 ]; then',
-            '$PKG_CMD install -y ruby',
+          '$PKG_CMD install -y ruby',
           'fi',
           '$PKG_CMD install -y awscli',
           'TMP_DIR=`mktemp -d`',
@@ -392,7 +396,7 @@ export class ServerDeploymentGroup extends ServerDeploymentGroupBase {
   }
 
   private loadBalancerInfo(lbProvider?: codedeploylb.ILoadBalancer):
-      CfnDeploymentGroup.LoadBalancerInfoProperty | undefined {
+    CfnDeploymentGroup.LoadBalancerInfoProperty | undefined {
     if (!lbProvider) {
       return undefined;
     }
@@ -416,7 +420,7 @@ export class ServerDeploymentGroup extends ServerDeploymentGroupBase {
   }
 
   private ec2TagSet(tagSet?: InstanceTagSet):
-      CfnDeploymentGroup.EC2TagSetProperty | undefined {
+    CfnDeploymentGroup.EC2TagSetProperty | undefined {
     if (!tagSet || tagSet.instanceTagGroups.length === 0) {
       return undefined;
     }
@@ -432,7 +436,7 @@ export class ServerDeploymentGroup extends ServerDeploymentGroupBase {
   }
 
   private onPremiseTagSet(tagSet?: InstanceTagSet):
-      CfnDeploymentGroup.OnPremisesTagSetProperty | undefined {
+    CfnDeploymentGroup.OnPremisesTagSetProperty | undefined {
     if (!tagSet || tagSet.instanceTagGroups.length === 0) {
       return undefined;
     }
